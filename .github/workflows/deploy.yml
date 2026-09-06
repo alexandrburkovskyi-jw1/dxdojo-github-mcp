@@ -1,0 +1,70 @@
+# ============================================================
+#  GitHub Actions ワークフロー：GitHub Pages への自動デプロイ
+#  ------------------------------------------------------------
+#  読み方：
+#   name      … Actions タブに表示される名前
+#   on        … 「いつ発火するか」(トリガー)
+#   jobs      … 「何をするか」。job ごとに新しい Linux 仮想マシンが起動する
+#   runs-on   … その仮想マシンの OS (ubuntu-latest = Ubuntu Linux)
+#   steps     … 仮想マシンの中で上から順に実行されるコマンド
+# ============================================================
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]        # ← main ブランチに push されたら発火
+  workflow_dispatch:        # ← Actions タブから手動実行もできる
+
+# GitHub Pages に書き込むための権限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時に2つ走らないようにする
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  # ---------- Job 1: サイトの中身を用意する ----------
+  build:
+    runs-on: ubuntu-latest  # ← まっさらな Ubuntu Linux がここで起動する
+    steps:
+      - name: リポジトリの中身を仮想マシンにコピー
+        uses: actions/checkout@v4
+
+      - name: 仮想マシンの正体を確認してみる（ハンズオン用）
+        run: |
+          echo "=== OS ==="
+          cat /etc/os-release | head -n 2
+          echo "=== 今どこにいる？ ==="
+          pwd
+          echo "=== ファイル一覧 ==="
+          ls -la
+          echo "=== 誰が push した？ ==="
+          echo "${{ github.actor }} さんが ${{ github.ref_name }} に push しました"
+
+      - name: デプロイ用のバッジに日時を書き込む
+        run: |
+          sed -i "s|<span class=\"badge\">v1</span>|<span class=\"badge\">$(date '+%Y-%m-%d %H:%M UTC')</span>|" index.html
+
+      - name: Pages 用の設定
+        uses: actions/configure-pages@v5
+
+      - name: 公開するファイルをまとめる（成果物 = artifact）
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  # ---------- Job 2: 公開する ----------
+  deploy:
+    needs: build            # ← build が成功したら実行
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: GitHub Pages にデプロイ
+        id: deployment
+        uses: actions/deploy-pages@v4
